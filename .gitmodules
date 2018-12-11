@@ -1,0 +1,3 @@
+[submodule "scripts/models"]
+	path = scripts/models
+	url = https://github.com/chainer/models.git
