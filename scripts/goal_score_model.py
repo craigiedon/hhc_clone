@@ -2,7 +2,6 @@ import numpy as np
 import argparse
 
 from models.mdn.mdn import MDN
-from chainercv.links import ResNet50
 
 import chainer
 import chainer.functions as F
@@ -17,18 +16,24 @@ from chainer.training import extensions
 from chainer.datasets import split_dataset
 from chainer import optimizers
 
+from chainer.links import ResNet50Layers
+
 class GoalScoreModel(chainer.Chain):
     """docstring for GoalScoreModel"""
     def __init__(self, arg=None):
         super(GoalScoreModel, self).__init__()
         self.arg = arg
         with self.init_scope():
-            self.head_model = ResNet50(pretrained_model='imagenet', arch='he')
+
+            self.head_model = ResNet50Layers()
             self.head_model.pick = 'pool5'
             self.head_model.layer_size = 2048
+            self.head_model.feature = \
+                    lambda x: self.head_model.forward(x, 
+                              layers=[self.head_model.pick])[self.head_model.pick]
 
             self.mdn_hidden_units = 500
-            self.mdn_gaussian_mixtures = 24
+            self.mdn_gaussian_mixtures = 1
             self.mdn_input_dim = 1
             self.mdn_model = MDN(self.mdn_input_dim, self.mdn_hidden_units, self.mdn_gaussian_mixtures)
             self.mdn_model.sample_distribution = self._distrib
@@ -37,7 +42,6 @@ class GoalScoreModel(chainer.Chain):
     def _distrib(self, x):
         pi, mu, log_var = self.mdn_model.get_gaussian_params(x)
         n_batch = pi.shape[0]
-
 
         # Choose one of Gaussian means and vars n_batch times
         ps = chainer.backends.cuda.to_cpu(pi.array)
@@ -60,7 +64,7 @@ class GoalScoreModel(chainer.Chain):
     def forward(self, x):
         # print(x.shape)
 
-        h = self.head_model(x)
+        h = self.head_model.feature(x)
         # h2 = self.mdn_model.sample(h)
         h2 = self.mdn_model.sample_distribution(h)
         # print(h2[0].shape)
@@ -68,18 +72,19 @@ class GoalScoreModel(chainer.Chain):
 
 
     def calc_loss(self, x, t):
-        h = self.head_model(x)
-        print('head_space', h)
-        self.loss = self.mdn_model.negative_log_likelihood(h, t)
+        h = self.head_model.feature(x)
+        # print('head_space', h)
+        self.neg_log_like_loss = self.mdn_model.negative_log_likelihood(h, t)
 
-        # print('Loss: ', self.loss)
+        # print('neg_log_like_Loss: ', self.neg_log_like_loss)
         mu, log_var = self.forward(x)
         z = F.gaussian(mu, log_var)
         self.mean_abs_error = F.mean_absolute_error(t, z)
 
-        chainer.report({'loss': self.loss, 'mean_abs_error': self.mean_abs_error}, self)
+        chainer.report({'loss': self.neg_log_like_loss, 'mean_abs_error': self.mean_abs_error}, self)
         
-        return self.loss
+        # return self.loss
+        return self.mean_abs_error + 0.1*self.neg_log_like_loss
 
 ####
 
@@ -97,12 +102,14 @@ def load_data(filename, size=(128, 128), verbose=0):
             if verbose > 0:
                 print(frame.shape)
                 cv2.imshow('frame',frame)
+            # frame = cv2.resize(frame, size)
+            # frame = frame.astype(np.float32)/255.
             # frame = cv2.resize(frame, size).transpose((2, 1, 0))
             frame = chainer.links.model.vision.resnet.prepare(frame, size)
             frames.append(frame)
         else:
             break
-        if cv2.waitKey(1) & 0xFF == ord('q'):
+        if cv2.waitKey(0 ) & 0xFF == ord('q'):
             break
 
     # When everything done, release the capture
@@ -114,12 +121,12 @@ def load_data(filename, size=(128, 128), verbose=0):
 
 
 def main3():
-    batch_size = 10
-    test_split = 0.2
+    batch_size = 1
+    test_split = 0.1
     gpu_id = 0
-    max_epoch = 1000
+    max_epoch = 10000
     
-    frames = load_data(filename='/media/daniel/data/hhc/VID_20181210_150826.mp4')
+    frames = load_data(filename='/media/daniel/data/hhc/VID_20181210_150814.mp4', verbose=0)
     labels = np.linspace(0, 1, len(frames)).astype(np.float32).reshape(-1, 1)
     print(frames.shape, labels.shape)
 
@@ -129,16 +136,13 @@ def main3():
     print('Frame size: ', data[0][0].shape, data[0][0].dtype)
     
     data_test, data_train = split_dataset(data, int(test_split*len(data)))
-    train_iter = iterators.SerialIterator(data_train, batch_size, shuffle=True)
+    train_iter = iterators.SerialIterator(data_train, batch_size, shuffle=False)
     test_iter = iterators.SerialIterator(data_test, batch_size, repeat=False, shuffle=False)
 
      
     model = GoalScoreModel()
-    import chainer.computational_graph as c
 
-    # g = c.build_computational_graph(model.head_model)
-    # with open(os.path.join('result', 'graph'), 'w') as o:
-    #     o.write(g.dump())
+
 
     if gpu_id >= 0:
         chainer.backends.cuda.get_device_from_id(gpu_id).use()
@@ -149,7 +153,13 @@ def main3():
 
     # Create the optimizer for the model
     optimizer = optimizers.Adam().setup(model)
-    # optimizer.update(model.calc_loss, np.asarray([data_train[0][0]]), np.asarray([data_train[0][1]]))
+
+    # xp = chainer.backend.get_array_module(data_train)
+    # optimizer.update(model.calc_loss, xp.asarray([data_train[0][0]]), xp.asarray([data_train[0][1]]))
+    # import chainer.computational_graph as c
+    # g = c.build_computational_graph(model.neg_log_like_loss)
+    # with open('result/graph.dot', 'w') as o:
+    #     o.write(g.dump())
 
     updater = training.StandardUpdater(train_iter, optimizer, 
                                        loss_func=model.calc_loss,
@@ -159,6 +169,13 @@ def main3():
     trainer.extend(extensions.Evaluator(test_iter, model, eval_func=model.calc_loss, device=gpu_id), trigger=(1, 'epoch'))
     trainer.extend(extensions.LogReport(trigger=(10, 'iteration')))
     trainer.extend(extensions.PrintReport(['epoch', 'iteration', 'main/loss', 'main/mean_abs_error' ,'validation/main/loss', 'validation/main/mean_abs_error', 'elapsed_time']))#, 'main/loss', 'validation/main/loss', 'elapsed_time'], ))
+    # trainer.extend(extensions.PlotReport(['main/loss', 'validation/main/loss'], x_key='epoch', file_name='loss.png'))
+    # trainer.extend(extensions.dump_graph('main/loss'))
+    # trainer.extend(extensions.ProgressBar())
+    # trainer.extend(extensions.snapshot(filename='snapshot_epoch-{.updater.epoch}'), trigger=(100, 'epoch'))
+
+    model.head_model.disable_update()
+    
     trainer.run()
     print('done.')
 
