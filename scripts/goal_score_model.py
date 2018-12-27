@@ -34,7 +34,7 @@ class GoalScoreModel(chainer.Chain):
                               layers=[self.head_model.pick])[self.head_model.pick]
 
             self.mdn_hidden_units = 500
-            self.mdn_gaussian_mixtures = 50
+            self.mdn_gaussian_mixtures = 10
             self.mdn_input_dim = 1
             self.mdn_model = MDN(self.mdn_input_dim, self.mdn_hidden_units, self.mdn_gaussian_mixtures)
             self.mdn_model.sample_distribution = self._distrib
@@ -85,10 +85,12 @@ class GoalScoreModel(chainer.Chain):
         self.mean_abs_error = F.mean_absolute_error(t, z)
 
         chainer.report({'nll': self.neg_log_like_loss}, self)
-        chainer.report({'mean_abs_error': self.mean_abs_error}, self)
+        chainer.report({'mae': self.mean_abs_error}, self)
         chainer.report({'sigma': F.mean(F.sqrt(F.exp(log_var)))}, self)
         
-        self.total_loss = self.mean_abs_error + 0.1*(self.neg_log_like_loss / len(x))
+        self.total_loss = self.mean_abs_error + \
+                          0.1*(self.neg_log_like_loss / len(x))
+
         chainer.report({'loss': self.total_loss}, self)
         return self.total_loss
 
@@ -207,7 +209,8 @@ def main3():
 
     # Create the optimizer for the model
     optimizer = optimizers.Adam().setup(model)
-    optimizer.add_hook(chainer.optimizer.WeightDecay(rate=0.001))
+    # optimizer.add_hook(chainer.optimizer.WeightDecay(rate=0.0001))
+    
     # optimizer.add_hook(chainer.optimizer_hooks.GradientHardClipping(-.1, .1))
 
 
@@ -229,22 +232,22 @@ def main3():
     trainer = training.Trainer(updater, (args.max_epoch, 'epoch'), out=args.out_dir)
     trainer.extend(extensions.Evaluator(test_iter, model, eval_func=model.calc_loss, device=args.gpu_id), trigger=(1, 'epoch'))
     trainer.extend(extensions.LogReport(trigger=(1, 'epoch')))
-    trainer.extend(extensions.PrintReport(['epoch', 'main/loss', 'main/nll', 'main/mean_abs_error', 'main/sigma' ,'validation/main/loss', 'validation/main/mean_abs_error', 'validation/main/sigma', 'elapsed_time']))#, 'main/loss', 'validation/main/loss', 'elapsed_time'], ))
-    trainer.extend(extensions.PlotReport(['main/mean_abs_error', 'validation/main/mean_abs_error'], x_key='epoch', file_name='loss.png'))
+    trainer.extend(extensions.PrintReport(['epoch', 'main/loss', 'main/nll', 'main/mae', 'main/sigma' ,'validation/main/loss', 'validation/main/mae', 'validation/main/sigma', 'elapsed_time']))#, 'main/loss', 'validation/main/loss', 'elapsed_time'], ))
+    trainer.extend(extensions.PlotReport(['main/mae', 'validation/main/mae'], x_key='epoch', file_name='loss.png'))
     trainer.extend(extensions.dump_graph('main/loss'))
     trainer.extend(extensions.ProgressBar())
     trainer.extend(extensions.snapshot(filename='snapshot_epoch-{.updater.epoch}'), trigger=(10, 'epoch'))
     trainer.extend(extensions.snapshot_object(model, 'model_epoch_{.updater.epoch}.model'), trigger=(10, 'epoch'))
 
     # Disable update for the head model
-    # model.head_model.disable_update()
+    model.head_model.disable_update()
 
     # Resume from a specified snapshot
     if args.resume:
         chainer.serializers.load_npz(args.resume, trainer)
     
     trainer.run()
-    print('done.')
+    print('Done.')
 
 
 def main2():
