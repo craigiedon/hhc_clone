@@ -15,24 +15,24 @@ test_ids = [11]
 gpu_id = 1
 
 def plot_data(filename, mus, vars, names):
-    t = np.arange(len(mus[0]))
+    t = np.linspace(0, 1, num=len(mus[0]))
 
     fig, ax = plt.subplots(1)
-    ax.plot(t, t, lw=1, label='target mean', color='black', ls='--')
+    ax.plot(t, lw=1, label='target mean', color='black', ls='--')
 
     for mu, var, name, c, ls in zip(mus, vars, names, colours, lss):
         sigma = np.sqrt(var)
 
         # the `n_sigma` sigma upper and lower analytic population bounds
         n_sigma = 3
-        lower_bound = mu*t - n_sigma*sigma*np.sqrt(t)
-        upper_bound = mu*t + n_sigma*sigma*np.sqrt(t)
+        lower_bound = mu - n_sigma * sigma
+        upper_bound = mu + n_sigma * sigma
 
         # print(colors.keys())
         # c = np.random.choice(list(colors.keys()))
-        ax.plot(t, mu*t, label='{}_mean'.format(name), color=c, ls=ls)
+        ax.plot(mu, label='{}_mean'.format(name), color=c, ls=ls)
 
-        ax.fill_between(t, lower_bound, upper_bound, facecolor=c, alpha=0.5,
+        ax.fill_between(np.arange(len(mu)), lower_bound, upper_bound, facecolor=c, alpha=0.5,
                     label='{} {} sigma range'.format(name, n_sigma))
 
     ax.legend(loc='upper left')
