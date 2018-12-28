@@ -33,7 +33,7 @@ class GoalScoreModel(chainer.Chain):
                     lambda x: self.head_model.forward(x, 
                               layers=[self.head_model.pick])[self.head_model.pick]
 
-            self.mdn_hidden_units = 500
+            self.mdn_hidden_units = 100
             self.mdn_gaussian_mixtures = 10
             self.mdn_input_dim = 1
             self.mdn_model = MDN(self.mdn_input_dim, self.mdn_hidden_units, self.mdn_gaussian_mixtures)
@@ -209,8 +209,8 @@ def main3():
 
     # Create the optimizer for the model
     optimizer = optimizers.Adam().setup(model)
-    # optimizer.add_hook(chainer.optimizer.WeightDecay(rate=0.0001))
-    
+    optimizer.add_hook(chainer.optimizer.WeightDecay(rate=1e-6))
+
     # optimizer.add_hook(chainer.optimizer_hooks.GradientHardClipping(-.1, .1))
 
 
@@ -233,11 +233,11 @@ def main3():
     trainer.extend(extensions.Evaluator(test_iter, model, eval_func=model.calc_loss, device=args.gpu_id), trigger=(1, 'epoch'))
     trainer.extend(extensions.LogReport(trigger=(1, 'epoch')))
     trainer.extend(extensions.PrintReport(['epoch', 'main/loss', 'main/nll', 'main/mae', 'main/sigma' ,'validation/main/loss', 'validation/main/mae', 'validation/main/sigma', 'elapsed_time']))#, 'main/loss', 'validation/main/loss', 'elapsed_time'], ))
-    trainer.extend(extensions.PlotReport(['main/mae', 'validation/main/mae'], x_key='epoch', file_name='loss.png'))
+    trainer.extend(extensions.PlotReport(['main/mae', 'validation/main/mae'], x_key='epoch', file_name='loss.png', marker=None))
     trainer.extend(extensions.dump_graph('main/loss'))
     trainer.extend(extensions.ProgressBar())
-    trainer.extend(extensions.snapshot(filename='snapshot_epoch-{.updater.epoch}'), trigger=(10, 'epoch'))
-    trainer.extend(extensions.snapshot_object(model, 'model_epoch_{.updater.epoch}.model'), trigger=(10, 'epoch'))
+    trainer.extend(extensions.snapshot(filename='snapshot_epoch-{.updater.epoch}'), trigger=(20, 'epoch'))
+    trainer.extend(extensions.snapshot_object(model, 'model_epoch_{.updater.epoch}.model'), trigger=(20, 'epoch'))
 
     # Disable update for the head model
     model.head_model.disable_update()
