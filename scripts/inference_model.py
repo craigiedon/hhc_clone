@@ -33,13 +33,11 @@ def plot_data(filename, mus, vars, names):
         lower_bound_n = mu - n_sigma * sigma
         upper_bound_n = mu + n_sigma * sigma
 
-        # print(colors.keys())
-        # c = np.random.choice(list(colors.keys()))
         ax.plot(mu, label='{}_mean'.format(name), color=c, ls=ls)
-        ax.fill_between(np.arange(len(mu)), lower_bound_n, upper_bound_n, facecolor=c, alpha=0.5,
-                    label='{} {} sigma range'.format(name, n_sigma))
-        ax.fill_between(np.arange(len(mu)), lower_bound3, upper_bound3, facecolor=c, alpha=0.2,
-                    label='{} 3 sigma range'.format(name))
+        ax.fill_between(np.arange(len(mu)), lower_bound_n, upper_bound_n, facecolor=c, alpha=0.5)
+                    # , label='{} {} sigma range'.format(name, n_sigma))
+        ax.fill_between(np.arange(len(mu)), lower_bound3, upper_bound3, facecolor=c, alpha=0.2)
+                    # , label='{} 3 sigma range'.format(name))
 
     ax.legend(loc='upper left')
     ax.set_title('Goal Score model')
@@ -51,6 +49,10 @@ def plot_data(filename, mus, vars, names):
 
     plt.savefig(filename)
     plt.close()
+
+def find_last_model(path):
+    print('To be done')
+    pass
 
 
 def test_kinect():

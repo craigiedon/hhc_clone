@@ -88,8 +88,8 @@ class GoalScoreModel(chainer.Chain):
         chainer.report({'mae': self.mean_abs_error}, self)
         chainer.report({'sigma': F.mean(F.sqrt(F.exp(log_var)))}, self)
         
-        self.total_loss = self.mean_abs_error + \
-                          0.1*(self.neg_log_like_loss / len(x))
+        self.total_loss = 0.1*self.mean_abs_error + \
+                          (self.neg_log_like_loss / len(x))
 
         chainer.report({'loss': self.total_loss}, self)
         return self.total_loss
@@ -229,6 +229,17 @@ def main3():
     #                                 loss_func=model.calc_loss,
     #                                 devices={'main': args.gpu_id, 'second': 1})
 
+    # Pre-training
+    print('Pretraining started.')
+    trainer = training.Trainer(updater, (3, 'epoch'), out=args.out_dir)
+    # Disable update for the head model
+    print('Disabling traiing of head.')
+    model.head_model.disable_update()
+    trainer.extend(extensions.ProgressBar())
+    trainer.run()
+
+    print('Full model training ...')
+    # Full training
     trainer = training.Trainer(updater, (args.max_epoch, 'epoch'), out=args.out_dir)
     trainer.extend(extensions.Evaluator(test_iter, model, eval_func=model.calc_loss, device=args.gpu_id), trigger=(1, 'epoch'))
     trainer.extend(extensions.LogReport(trigger=(1, 'epoch')))
@@ -239,8 +250,9 @@ def main3():
     trainer.extend(extensions.snapshot(filename='snapshot_epoch-{.updater.epoch}'), trigger=(20, 'epoch'))
     trainer.extend(extensions.snapshot_object(model, 'model_epoch_{.updater.epoch}.model'), trigger=(20, 'epoch'))
 
-    # Disable update for the head model
-    model.head_model.disable_update()
+    # Disable/Enable update for the head model
+    # model.head_model.disable_update()
+    model.head_model.enable_update()
 
     # Resume from a specified snapshot
     if args.resume:
