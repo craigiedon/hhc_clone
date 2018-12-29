@@ -6,9 +6,8 @@ from models.mdn.mdn import MDN
 import chainer
 import chainer.functions as F
 import chainer.links as L
+from chainer.links import ResNet50Layers
 
-
-from chainer.training.extensions import LogReport
 from chainer import iterators
 from chainer import training
 from chainer.datasets import TransformDataset
@@ -17,7 +16,6 @@ from chainer.datasets import split_dataset
 from chainer import optimizers
 from chainer import serializers
 
-from chainer.links import ResNet50Layers
 
 class GoalScoreModel(chainer.Chain):
     """docstring for GoalScoreModel"""
@@ -176,12 +174,6 @@ def main3():
     parser.add_argument('--data_file_pattern', '-f', type=str, default='trial{}.avi')
     args = parser.parse_args()
 
-    # batch_size = 100
-    # test_split = 0.2
-    # gpu_id = 1
-    # max_epoch = 250
-    # resume = None
-    # out_dir = 'results/result_kinect_mse'
     
     # frames, labels = load_frames_labels(filestype='/media/daniel/data/hhc/trial{}_r_forearm.avi')
     frames, labels = load_frames_labels(filestype=''.join((args.data_base_dir, args.data_file_pattern)))
@@ -233,13 +225,14 @@ def main3():
     print('Pretraining started.')
     trainer = training.Trainer(updater, (3, 'epoch'), out=args.out_dir)
     # Disable update for the head model
-    print('Disabling traiing of head.')
+    print('Disabling training of head model.')
     model.head_model.disable_update()
     trainer.extend(extensions.ProgressBar())
+    trainer.extend(extensions.FailOnNonNumber())
     trainer.run()
 
-    print('Full model training ...')
     # Full training
+    print('Full model training ...')
     trainer = training.Trainer(updater, (args.max_epoch, 'epoch'), out=args.out_dir)
     trainer.extend(extensions.Evaluator(test_iter, model, eval_func=model.calc_loss, device=args.gpu_id), trigger=(1, 'epoch'))
     trainer.extend(extensions.LogReport(trigger=(1, 'epoch')))
@@ -251,7 +244,6 @@ def main3():
     trainer.extend(extensions.snapshot_object(model, 'model_epoch_{.updater.epoch}.model'), trigger=(20, 'epoch'))
 
     # Disable/Enable update for the head model
-    # model.head_model.disable_update()
     model.head_model.enable_update()
 
     # Resume from a specified snapshot

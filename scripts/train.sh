@@ -1,3 +1,6 @@
+#!/bin/bash
+set -e
+
 python3 goal_score_model.py --batch_size 120 \
                 --data_file_pattern 'trial{}_r_forearm.avi' \
                 --out_dir 'results/result_r_forearm' \
