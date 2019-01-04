@@ -1,8 +1,6 @@
 import numpy as np
 import argparse
 
-from models.mdn.mdn import MDN
-
 import chainer
 import chainer.functions as F
 import chainer.links as L
@@ -16,9 +14,97 @@ from chainer.datasets import split_dataset
 from chainer import optimizers
 from chainer import serializers
 
+import math
+
+import chainer
+import chainer.functions as F
+import chainer.links as L
+import numpy as np
+
+class MDN(chainer.Chain):
+
+    from chainer import distributions
+    """Mixture Density Network."""
+
+    def __init__(self, input_dim, hidden_units, gaussian_mixtures):
+        super(MDN, self).__init__()
+        with self.init_scope():
+            self.l1 = L.Linear(None, hidden_units)
+            self.l2 = L.Linear(hidden_units, gaussian_mixtures +
+                               gaussian_mixtures * input_dim * 2,
+                               initialW=chainer.initializers.Normal(scale=0.1))  # pi, mu, log_var
+        self.input_dim = input_dim
+        self.gaussian_mixtures = gaussian_mixtures
+
+    def get_gaussian_params(self, x):
+        h = F.tanh(self.l1(x))
+        h = self.l2(h)
+        
+        pi = h[:, :self.gaussian_mixtures]
+        mu_var_dim = self.gaussian_mixtures * self.input_dim
+        mu = h[:, self.gaussian_mixtures:self.gaussian_mixtures + mu_var_dim]
+        log_var = h[:, self.gaussian_mixtures + mu_var_dim:]
+
+        n_batch = x.shape[0]
+
+        # mixing coefficients
+        pi = F.reshape(pi, (n_batch, self.gaussian_mixtures))
+        pi = F.softmax(pi, axis=1)
+
+        # mean
+        mu = F.reshape(mu, (n_batch, self.gaussian_mixtures, self.input_dim))
+
+        # log variance
+        log_var = F.reshape(
+            log_var, (n_batch, self.gaussian_mixtures, self.input_dim))
+
+        return pi, mu, log_var
+
+    def normal_prob(self, y, mu, log_var):
+        squared_sigma = F.exp(log_var)
+        sigma = F.sqrt(squared_sigma)
+        d = distributions.Normal(mu, scale=sigma)
+
+        return F.clip(d.prob(y), 0., 1.)
+
+    def sample_distribution(self, x):
+        pi, mu, log_var = self.get_gaussian_params(x)
+        n_batch = pi.shape[0]
+
+        # Choose one of Gaussian means and vars n_batch times
+        ps = chainer.backends.cuda.to_cpu(pi.array)
+        if np.any(np.isnan(ps)):
+            print('Found nan values, aborting.', ps, ps.shape)
+            exit(0)
+
+        idx = [np.random.choice(self.gaussian_mixtures, p=p) for p in ps]
+
+        mu = F.get_item(mu, [list(range(n_batch)), idx])
+        log_var = F.get_item(log_var, [list(range(n_batch)), idx])
+        return mu, log_var
+
+    def negative_log_likelihood(self, x, y):
+        mu, log_var = self.sample_distribution(y)
+        return F.mean(F.gaussian_nll(x, mu, log_var, reduce='no'))
+
+    def sample(self, x):
+        pi, mu, log_var = self.get_gaussian_params(x)
+        n_batch = pi.shape[0]
+
+        # Choose one of Gaussian means and vars n_batch times
+        ps = chainer.backends.cuda.to_cpu(pi.array)
+        idx = [np.random.choice(self.gaussian_mixtures, p=p) for p in ps]
+        mu = F.get_item(mu, [range(n_batch), idx])
+        log_var = F.get_item(log_var, [range(n_batch), idx])
+
+        # Sampling
+        z = F.gaussian(mu, log_var)
+
+        return z
+
 
 class GoalScoreModel(chainer.Chain):
-    """docstring for GoalScoreModel"""
+    """GoalScoreModel - ResNet frontend with an MDN backend. """
     def __init__(self, arg=None):
         super(GoalScoreModel, self).__init__()
         self.arg = arg
@@ -35,27 +121,7 @@ class GoalScoreModel(chainer.Chain):
             self.mdn_gaussian_mixtures = 10
             self.mdn_input_dim = 1
             self.mdn_model = MDN(self.mdn_input_dim, self.mdn_hidden_units, self.mdn_gaussian_mixtures)
-            self.mdn_model.sample_distribution = self._distrib
- 
 
-    def _distrib(self, x):
-        pi, mu, log_var = self.mdn_model.get_gaussian_params(x)
-        n_batch = pi.shape[0]
-
-        # Choose one of Gaussian means and vars n_batch times
-        ps = chainer.backends.cuda.to_cpu(pi.array)
-        if np.any(np.isnan(ps)):
-            print('Found nan values, aborting.', ps, ps.shape)
-            exit(0)
-        
-        idx = [np.random.choice(self.mdn_model.gaussian_mixtures, p=p) for p in ps]
-        # print(idx)
-        # print(mu, mu.shape)
-        # print(F.get_item(mu, (list(range(n_batch)), idx)))
-
-        mu = F.get_item(mu, [list(range(n_batch)), idx])
-        log_var = F.get_item(log_var, [list(range(n_batch)), idx])
-        return mu, log_var
 
     def __call__(self, x):
         return self.forward(x)
@@ -64,18 +130,17 @@ class GoalScoreModel(chainer.Chain):
         # print(x.shape)
 
         h = self.head_model.feature(x)
+
         # h2 = self.mdn_model.sample(h)
         h2 = self.mdn_model.sample_distribution(h)
-        # print(h2[0].shape)
+
         return h2
 
 
     def calc_loss(self, x, t):
         h = self.head_model.feature(x)
         # print('head_space', h)
-        # self.neg_log_like_loss = self.mdn_model.negative_log_likelihood(h, t)
 
-        # print('neg_log_like_Loss: ', self.neg_log_like_loss)
         mu, log_var = self.forward(x)
         self.neg_log_like_loss = F.gaussian_nll(t, mu, log_var) # returns the sum of nll's
 
@@ -85,7 +150,7 @@ class GoalScoreModel(chainer.Chain):
         chainer.report({'nll': self.neg_log_like_loss}, self)
         chainer.report({'mae': self.mean_abs_error}, self)
         chainer.report({'sigma': F.mean(F.sqrt(F.exp(log_var)))}, self)
-        
+
         self.total_loss = 0.1*self.mean_abs_error + \
                           (self.neg_log_like_loss / len(x))
 
@@ -174,10 +239,10 @@ def main3():
     parser.add_argument('--data_file_pattern', '-f', type=str, default='trial{}.avi')
     args = parser.parse_args()
 
-    
+
     # frames, labels = load_frames_labels(filestype='/media/daniel/data/hhc/trial{}_r_forearm.avi')
     frames, labels = load_frames_labels(filestype=''.join((args.data_base_dir, args.data_file_pattern)))
-    
+
     frames, labels = unison_shuffled_copies(frames, labels)
     print('Frames shape: ', frames.shape, ' Labels shape: ', labels.shape)
 
@@ -185,11 +250,11 @@ def main3():
     print('Dataset length: ', data._length)
 
     print('Frame size: ', data[0][0].shape, data[0][0].dtype)
-    
+
     data_test, data_train = split_dataset(data, int(args.test_split*len(data)))
     train_iter = iterators.SerialIterator(data_train, args.batch_size, shuffle=True)
     test_iter = iterators.SerialIterator(data_test, args.batch_size, repeat=False, shuffle=False)
- 
+
     model = GoalScoreModel()
 
     if args.gpu_id >= 0:
@@ -202,21 +267,20 @@ def main3():
     # Create the optimizer for the model
     optimizer = optimizers.Adam().setup(model)
     optimizer.add_hook(chainer.optimizer.WeightDecay(rate=1e-6))
-
     # optimizer.add_hook(chainer.optimizer_hooks.GradientHardClipping(-.1, .1))
 
 
     # xp = chainer.backend.get_array_module(data_train)
     # optimizer.update(model.calc_loss, xp.asarray([data_train[0][0]]), xp.asarray([data_train[0][1]]))
     # import chainer.computational_graph as c
-    # g = c.build_computational_graph(model.neg_log_like_loss)
-    # with open('result/graph.dot', 'w') as o:
+    # g = c.build_computational_graph(model.calc_loss)
+    # with open('results/graph.dot', 'w') as o:
     #     o.write(g.dump())
 
     updater = training.StandardUpdater(train_iter, optimizer, 
                                        loss_func=model.calc_loss,
                                        device=args.gpu_id)
-# 
+
     # updater = training.ParallelUpdater(train_iter, optimizer,
     #                                 loss_func=model.calc_loss,
     #                                 devices={'main': args.gpu_id, 'second': 1})
@@ -240,6 +304,7 @@ def main3():
     trainer.extend(extensions.PlotReport(['main/mae', 'validation/main/mae'], x_key='epoch', file_name='loss.png', marker=None))
     trainer.extend(extensions.dump_graph('main/loss'))
     trainer.extend(extensions.ProgressBar())
+    trainer.extend(extensions.FailOnNonNumber())
     trainer.extend(extensions.snapshot(filename='snapshot_epoch-{.updater.epoch}'), trigger=(20, 'epoch'))
     trainer.extend(extensions.snapshot_object(model, 'model_epoch_{.updater.epoch}.model'), trigger=(20, 'epoch'))
 
@@ -249,7 +314,7 @@ def main3():
     # Resume from a specified snapshot
     if args.resume:
         chainer.serializers.load_npz(args.resume, trainer)
-    
+
     trainer.run()
     print('Done.')
 

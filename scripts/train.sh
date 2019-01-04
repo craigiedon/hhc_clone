@@ -1,5 +1,5 @@
 #!/bin/bash
-set -e
+set -e # Exit if any of the processes return non-zero.
 
 python3 goal_score_model.py --batch_size 120 \
                 --data_file_pattern 'trial{}_r_forearm.avi' \
