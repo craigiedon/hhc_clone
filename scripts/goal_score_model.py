@@ -230,6 +230,8 @@ def main3():
     parser.add_argument('--gpu_id', '-g', type=int, default=1)
     parser.add_argument('--batch_size', '-b', type=int, default=100)
     parser.add_argument('--test_split', type=float, default=0.2)
+    parser.add_argument('--real_test',  dest='real_test', action='store_true', 
+                                help='Whether to split the data or use a complete new trial.')
     parser.add_argument('--mdn_hidden-units', '-u', type=int, default=24)
     parser.add_argument('--mdn_gaussian-mixtures', '-m', type=int, default=24)
     parser.add_argument('--max_epoch', '-e', type=int, default=250)
@@ -251,9 +253,18 @@ def main3():
 
     print('Frame size: ', data[0][0].shape, data[0][0].dtype)
 
-    data_test, data_train = split_dataset(data, int(args.test_split*len(data)))
-    train_iter = iterators.SerialIterator(data_train, args.batch_size, shuffle=True)
-    test_iter = iterators.SerialIterator(data_test, args.batch_size, repeat=False, shuffle=False)
+    if args.real_test:
+        print('Using test trial.')
+        train_iter = iterators.SerialIterator(data, args.batch_size, shuffle=True)
+
+        # Load the test data
+        test_frames, test_labels = load_frames_labels(ids=[11], filestype=''.join((args.data_base_dir, args.data_file_pattern)))
+        test_data = chainer.datasets.TupleDataset(test_frames, test_labels)
+        test_iter = iterators.SerialIterator(test_data, args.batch_size, repeat=False, shuffle=False)
+    else:   
+        data_test, data_train = split_dataset(data, int(args.test_split*len(data)))
+        train_iter = iterators.SerialIterator(data_train, args.batch_size, shuffle=True)
+        test_iter = iterators.SerialIterator(data_test, args.batch_size, repeat=False, shuffle=False)
 
     model = GoalScoreModel()
 
