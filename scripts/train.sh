@@ -18,3 +18,5 @@ python3 goal_score_model.py --batch_size 120 \
                 --out_dir 'results/result_kinect2' \
                 --max_epoch 200 \
                 --real_test --test_split 0.1
+
+python3 inference_model.py

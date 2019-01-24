@@ -1,5 +1,6 @@
 import numpy as np
 import argparse, os
+import cv2
 
 import goal_score_model as gsm
 import chainer
@@ -15,6 +16,17 @@ lss = ['-', '--', '-.', ':']
 
 test_ids = [11]
 gpu_id = 0
+
+test_image = 30
+
+def plot_image(filename, id, dataset, mu=None, var=None):
+    img = chainer.dataset.to_device(-1, dataset[id])
+    img = img.transpose((1, 2, 0))
+    img += np.array([103.939, 116.779, 123.68], dtype=np.float32)
+    print(img.shape)
+    print(filename)
+    cv2.imwrite(filename, img)
+
 
 def plot_data(filename, mus, vars, names):
     t = np.linspace(0, 1, num=len(mus[0]))
@@ -76,6 +88,7 @@ def test_kinect():
 
     os.makedirs(os.path.join(base_path, 'inferences'), exist_ok=True)
     plot_data(os.path.join(base_path, 'inferences', 'kinect_{}.png'.format(test_ids)), [infered_mu.array.flatten()], [np.exp(infered_logvar.array.flatten())], ['kinect'])
+    plot_image(os.path.join(base_path, 'inferences', 'kinect_{}_{}.png'.format(test_ids, test_image)), test_image, kinect_frames)
 
     return infered_mu.array.flatten(), infered_logvar.array.flatten()
 
@@ -98,22 +111,23 @@ def test_r_forearm():
     # print(infered_mu.array)
 
     os.makedirs(os.path.join(base_path, 'inferences'), exist_ok=True)
-    plot_data(os.path.join(base_path, 'inferences/r_forearm_{}.png'.format(test_ids)), [infered_mu.array.flatten()], [np.exp(infered_logvar.array.flatten())], ['r_forearm'])
+    plot_data(os.path.join(base_path, 'inferences', 'r_forearm_{}.png'.format(test_ids)), [infered_mu.array.flatten()], [np.exp(infered_logvar.array.flatten())], ['r_forearm'])
+    plot_image(os.path.join(base_path, 'inferences', 'r_forearm_{}_{}.png'.format(test_ids, test_image)), test_image, r_forearm_frames)
 
     return infered_mu.array.flatten(), infered_logvar.array.flatten()
 
 def test_l_forearm():
     base_path = 'results/result_l_forearm'
-    r_forearm_model = gsm.GoalScoreModel()
-    r_forearm_model.load_model(os.path.join(base_path, 'model_epoch_200.model'))
-    r_forearm_model.to_gpu(gpu_id)
+    l_forearm_model = gsm.GoalScoreModel()
+    l_forearm_model.load_model(os.path.join(base_path, 'model_epoch_200.model'))
+    l_forearm_model.to_gpu(gpu_id)
 
-    r_forearm_frames, r_forearm_labels = gsm.load_frames_labels(ids=test_ids, data_size=100, filestype='/media/daniel/data/hhc/trial{}_l_forearm.avi')
-    print(r_forearm_frames.shape, r_forearm_labels.shape)
-    r_forearm_frames = chainer.dataset.to_device(gpu_id, r_forearm_frames)
+    l_forearm_frames, l_forearm_labels = gsm.load_frames_labels(ids=test_ids, data_size=100, filestype='/media/daniel/data/hhc/trial{}_l_forearm.avi')
+    print(l_forearm_frames.shape, l_forearm_labels.shape)
+    l_forearm_frames = chainer.dataset.to_device(gpu_id, l_forearm_frames)
     # r_forearm_frames, r_forearm_labels = gsm.unison_shuffled_copies(r_forearm_frames, r_forearm_labels)
 
-    infered_mu, infered_logvar = r_forearm_model.forward(r_forearm_frames)
+    infered_mu, infered_logvar = l_forearm_model.forward(l_forearm_frames)
     infered_mu.to_cpu()
     infered_logvar.to_cpu()
 
@@ -121,7 +135,8 @@ def test_l_forearm():
     # print(infered_mu.array)
 
     os.makedirs(os.path.join(base_path, 'inferences'), exist_ok=True)
-    plot_data(os.path.join(base_path, 'inferences/l_forearm_{}.png'.format(test_ids)), [infered_mu.array.flatten()], [np.exp(infered_logvar.array.flatten())], ['r_forearm'])
+    plot_data(os.path.join(base_path, 'inferences', 'l_forearm_{}.png'.format(test_ids)), [infered_mu.array.flatten()], [np.exp(infered_logvar.array.flatten())], ['l_forearm'])
+    plot_image(os.path.join(base_path, 'inferences', 'l_forearm_{}_{}.png'.format(test_ids, test_image)), test_image, l_forearm_frames)
 
     return infered_mu.array.flatten(), infered_logvar.array.flatten()
 
