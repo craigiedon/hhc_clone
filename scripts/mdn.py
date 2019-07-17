@@ -2,6 +2,7 @@ import chainer
 import chainer.functions as F
 import chainer.links as L
 import numpy as np
+from chainer import serializers
 
 class MDN(chainer.Chain):
 
@@ -12,6 +13,8 @@ class MDN(chainer.Chain):
         super(MDN, self).__init__()
         with self.init_scope():
             self.l1 = L.Linear(None, hidden_units)
+            self.l11 = L.Linear(hidden_units, hidden_units)
+            self.l12 = L.Linear(hidden_units, hidden_units)
             self.l2 = L.Linear(hidden_units, gaussian_mixtures +
                                gaussian_mixtures * input_dim * 2,
                                initialW=chainer.initializers.Normal(scale=0.1))  # pi, mu, log_var
@@ -19,7 +22,9 @@ class MDN(chainer.Chain):
         self.gaussian_mixtures = gaussian_mixtures
 
     def get_gaussian_params(self, x):
-        h = F.tanh(self.l1(x))
+        h = F.relu(self.l1(x))
+        h = F.relu(self.l11(h))
+        h = F.relu(self.l12(h))
         h = self.l2(h)
         
         pi = h[:, :self.gaussian_mixtures]
@@ -65,9 +70,25 @@ class MDN(chainer.Chain):
         log_var = F.get_item(log_var, [list(range(n_batch)), idx])
         return mu, log_var
 
-    def negative_log_likelihood(self, x, y):
-        mu, log_var = self.sample_distribution(y)
-        return F.mean(F.gaussian_nll(x, mu, log_var, reduce='no'))
+    def get_loss(self, x, t, report=True):
+        self.nll = self.negative_log_likelihood(x, t)
+
+        # MAR of goal model
+        
+        z = self.sample(x)
+        self.mean_abs_error = F.mean_absolute_error(t, z)
+
+        self.loss = 0.1 * self.nll + self.mean_abs_error
+        if report:
+            chainer.report({'loss': self.loss,
+                            'mae': self.mean_abs_error,
+                            'nll': self.nll}, self)
+        return self.loss
+
+    def negative_log_likelihood(self, x, t):
+        mu, log_var = self.sample_distribution(x)
+        self.gnll = F.mean(F.gaussian_nll(t, mu, log_var, reduce='no'))
+        return self.gnll
 
     def sample(self, x):
         pi, mu, log_var = self.get_gaussian_params(x)
@@ -83,3 +104,10 @@ class MDN(chainer.Chain):
         z = F.gaussian(mu, log_var)
 
         return z
+
+    def forward(self, x):
+        return self.sample(x)
+
+    def load_model(self, filename='my.model'):
+        serializers.load_npz(filename, self)
+        print('Loaded `{}` model.'.format(filename))
