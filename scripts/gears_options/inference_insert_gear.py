@@ -21,7 +21,7 @@ from sensor_msgs.msg import Image
 class GearInsertPolicy(object):
     """docstring for GearInsertPolicy
     """
-    def __init__(self, pr2_left=None, pr2_right=None):
+    def __init__(self, model_path, pr2_left=None, pr2_right=None):
         super(GearInsertPolicy, self).__init__()
 
         if pr2_left is None:
@@ -40,7 +40,7 @@ class GearInsertPolicy(object):
         self.current_action = 0
         self.last_img = None
         self.subscribe_to_data()
-        self.load_model(gpu_id=0)
+        self.load_model(model_path, gpu_id=0)
         self.prepare()
         # exit(0), print('exititng forcefully.')
 
@@ -52,15 +52,8 @@ class GearInsertPolicy(object):
         # Check with another model if we are in a terminal state
         pass
 
-    def load_model(self, filename='mymodel.model', gpu_id=0):
-        # filename='/mnt/7ac4c5b9-8c05-451f-9e6d-897daecb7442/gears/results/results_rmdn_new_aug2_lrdecay/InsertGearPolicyResNet_model_epoch_30.model'
+    def load_model(self, filename, gpu_id=0):
 
-        # Testing policies
-        # filename='/mnt/7ac4c5b9-8c05-451f-9e6d-897daecb7442/gears/results/results_rmdn_new_aug2_lrdecay2/InsertGearPolicyResNet_model_epoch_30.model'
-        # filename='/mnt/7ac4c5b9-8c05-451f-9e6d-897daecb7442/gears/results/results_rmdn_new_aug2_lrdecay3/InsertGearPolicyResNet_model_epoch_100.model'
-        # filename='/mnt/7ac4c5b9-8c05-451f-9e6d-897daecb7442/gears/results/results_rmdn_new3_aug2_lrdecay/InsertGearPolicyResNet_model_epoch_60.model'
-        # filename='/mnt/7ac4c5b9-8c05-451f-9e6d-897daecb7442/gears/results/results_rmdn_new_subset80_2/InsertGearPolicyResNet_model_epoch_40.model'
-        filename='/mnt/7ac4c5b9-8c05-451f-9e6d-897daecb7442/gears/results/results_rmdn_new_subset60/InsertGearPolicyResNet_model_epoch_300.model'
         # Load the model
         self.model = igp.InsertGearPolicyResNet()
         self.model.load_model(filename)
@@ -144,7 +137,12 @@ class GearInsertPolicy(object):
         pass
 
 def main():
-    policy = GearInsertPolicy()
+    if len(sys.argv) != 2:
+        print("Usage: python inference_insert_gear.py <model_path>")
+        sys.exit()
+    
+    model_path = sys.argv[1]
+    policy = GearInsertPolicy(model_path)
 
     r = rospy.Rate(0.5)
 
