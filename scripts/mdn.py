@@ -97,8 +97,9 @@ class MDN(chainer.Chain):
         # Choose one of Gaussian means and vars n_batch times
         ps = chainer.backends.cuda.to_cpu(pi.array)
         idx = [np.random.choice(self.gaussian_mixtures, p=p) for p in ps]
-        mu = F.get_item(mu, [range(n_batch), idx])
-        log_var = F.get_item(log_var, [range(n_batch), idx])
+
+        mu = F.get_item(mu, (list(range(n_batch)), idx))
+        log_var = F.get_item(log_var, (list(range(n_batch)), idx))
 
         # Sampling
         z = F.gaussian(mu, log_var)

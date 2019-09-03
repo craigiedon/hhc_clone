@@ -1,3 +1,12 @@
+# Don't want to carry all the lfd data around everywhere
+scripts/gears_options/data
+scripts/gears_options/results/*/preview/
+
+# Images
+*.png
+.vscode
+
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

@@ -294,7 +294,7 @@ class InsertGearPolicy(chainer.Chain):
         
         # Total loss
         self.total_loss = self.weighted_joint_error + \
-                          self.vae_loss + self.action.get_loss(output, t) ## TODO: FIX this
+                          self.vae_loss # + self.action.get_loss(output, t) ## TODO: FIX this
 
         chainer.report({'mae': self.mean_abs_error}, self)
         chainer.report({'weighted': self.weighted_joint_error}, self)
@@ -660,7 +660,7 @@ def main():
     args = parser.parse_args()
 
 
-    model = InsertGearPolicyResNet()
+    model = InsertGearPolicy()
     # frames, joints = load_data(prep_f=model.prepare, prepare_joints=model.prepare_joints) # Scale it all
     frames, joints = load_data(prep_f=model.prepare, prepare_joints=None, 
                                subset=args.subset, skipcount=args.skipcount) # Scale only images
@@ -713,7 +713,7 @@ def main():
     # Create the optimizer for the model
     optimizer = optimizers.Adam().setup(model)
     # optimizer = optimizers.SGD().setup(model)
-    optimizer.add_hook(chainer.optimizer.WeightDecay(rate=1e-6))
+    # optimizer.add_hook(chainer.optimizer.WeightDecay(rate=1e-6))
     # optimizer.add_hook(chainer.optimizer_hooks.GradientHardClipping(-.1, .1))
 
 
@@ -768,7 +768,7 @@ def main():
 
     trainer.extend(utils.display_image(model.vae_image, data_test, args.out_dir, args.gpu_id, n=3), trigger=(1, 'epoch'))
 # FOR SGD   trainer.extend(extensions.ExponentialShift('lr', 0.5, init=1e-4, target=1e-8), trigger=(200, 'epoch'))
-    trainer.extend(extensions.ExponentialShift('alpha', 0.5, init=1e-3, target=1e-8), trigger=(100, 'epoch'))
+    # trainer.extend(extensions.ExponentialShift('alpha', 0.5, init=1e-3, target=1e-8), trigger=(100, 'epoch'))
 
 
     # Disable/Enable update for the head model
